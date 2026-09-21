@@ -29,10 +29,9 @@ import phonenumbers
 from phonenumbers import PhoneNumberFormat
 from PIL import Image
 from pydantic import BaseModel, Field
-from email_hygiene import email_warnings
 
 # ДОБАВЛЕНО: распознавание email, продиктованного голосом.
-from spoken_contacts import with_spoken_emails
+from spoken_contacts import with_spoken_contacts
 
 # ДОБАВЛЕНО: проверка email на опечатки/недоставляемость (пункт ТЗ
 # "Email вбивают с ошибкой — письмо не доходит").
@@ -328,8 +327,13 @@ def group_sources(db: sqlite3.Connection, group_id: int) -> dict[str, Any]:
         db_ids.append(int(message["id"]))
         body = (message["body_text"] or "").strip()
         if body:
+            model_body = with_spoken_contacts(body)
             sources.append(
-                {"message_id": message_id, "source_type": "text", "content": body[:8000]}
+                {
+                    "message_id": message_id,
+                    "source_type": "text",
+                    "content": model_body[:8000],
+                }
             )
 
         artifacts = db.execute(
@@ -354,7 +358,7 @@ def group_sources(db: sqlite3.Connection, group_id: int) -> dict[str, Any]:
                 # Без этого продиктованный адрес не видели ни регулярка, ни
                 # модель, и поле Email в лиде оставалось пустым, хотя в
                 # расшифровке адрес был.
-                text = with_spoken_emails(text)
+                text = with_spoken_contacts(text)
             elif artifact["artifact_type"] == "ocr":
                 source_type = "image"
             else:
@@ -853,16 +857,7 @@ def sanitize_extraction(
                         "evidence": [entry.model_dump() for entry in evidence],
                     }
                 )
-                emails.append(
-                    {
-                        "value": value,
-                # Замечания по доставляемости (опечатка в домене,
-                # кириллические буквы-двойники, отсутствие MX). Адрес НЕ
-                # правится молча — менеджер должен увидеть и исправить сам.
-                        "warnings": email_warnings(value),
-                        "evidence": [entry.model_dump() for entry in evidence],
-                    }
-                )
+
     # Точный адрес, написанный менеджером в текстовом сообщении.
     # Он может исправить ложный конфликт модели, но не реальный
     # конфликт двух похожих адресов.

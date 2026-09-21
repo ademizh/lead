@@ -4,9 +4,9 @@ python-dotenv
 openai
 pydantic>=2
 email-validator
+dnspython
 phonenumbers
 Pillow
-python-dotenv
 fastapi
 uvicorn[standard]
 jinja2

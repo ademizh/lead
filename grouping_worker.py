@@ -31,7 +31,7 @@ from typing import Any
 
 # ДОБАВЛЕНО: email, продиктованный голосом, должен участвовать в
 # сопоставлении контактов наравне с написанным текстом.
-from spoken_contacts import spoken_emails
+from spoken_contacts import spoken_emails, spoken_phones
 
 try:
     from dotenv import load_dotenv
@@ -62,7 +62,7 @@ FOLLOW_UP_WINDOW_SECONDS = int(
 FOLLOW_UP_TIEBREAK_SECONDS = int(os.getenv("FOLLOW_UP_TIEBREAK_SECONDS", "45"))
 MAX_CANDIDATES = int(os.getenv("GROUPING_MAX_CANDIDATES", "5"))
 LLM_MODEL = os.getenv("OPENAI_GROUPING_MODEL", "gpt-4o-mini")
-ALGORITHM_VERSION = "hybrid-v3"
+ALGORITHM_VERSION = "hybrid-v4"
 
 EMAIL_RE = re.compile(
     r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.I
@@ -102,7 +102,9 @@ NEW_LEAD_RE = re.compile(
 CONTINUATION_RE = re.compile(
     r"\b(забыл(?:а)? сказать|добавлю|дополню|"
     r"уточн(?:ю|ение)|ещ[её] по нему|ещ[её] по ней|"
-    r"по этому контакту|также просил|ещ[её] просил)\b",
+    r"по этому контакту|также просил|ещ[её] просил|"
+    r"записал\w* номер точнее|номер точнее|точн\w* номер|"
+    r"правильн\w* номер|исправл\w* номер)\b",
     re.I,
 )
 # ДОБАВЛЕНО: слова, которыми менеджер ВВОДИТ нового человека. Если они есть,
@@ -447,6 +449,9 @@ def identities(text: str) -> tuple[set[str], set[str]]:
         digits = re.sub(r"\D", "", match.group(0))
         if 7 <= len(digits) <= 15:
             phones.add(digits)
+    # Номер словами должен совпадать с последующим уточнением цифрами.
+    # Иначе "восемь семьсот пять..." и "+7 705..." создавали два лида.
+    phones.update(spoken_phones(text))
     return emails, phones
 
 

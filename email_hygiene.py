@@ -1,14 +1,16 @@
-"""Проверка email на опечатки (пункт ТЗ "письмо не доходит").
+"""ДОБАВЛЕНО: проверка email на опечатки (пункт ТЗ "письмо не доходит").
 
-Раньше сервис проверял только то, что адрес синтаксически валиден и дословно
-присутствует в источнике. Но "ivan@gmail.con" синтаксически безупречен и в
-источнике присутствует — и при этом мёртв.
+ТЗ прямо называет эту боль: "Email вбивают с ошибкой — письмо не доходит, лид
+считается «холодным» и закрывается". Раньше сервис проверял только то, что
+адрес синтаксически валиден и дословно присутствует в источнике. Но
+"ivan@gmail.con" синтаксически безупречен и в источнике присутствует —
+и при этом мёртв.
 
-Модуль НЕ исправляет адрес молча. Требование обратное: "Ненадёжно прочитанное
-значение остаётся пустым... Пустое поле менеджер дозаполнит за 10 секунд;
-неверное он не заметит". Поэтому здесь только предупреждение с конкретной
-подсказкой — его видно и в карточке лида, и в комментарии в Bitrix24, и
-менеджер исправляет адрес за те самые 10 секунд.
+Модуль НЕ исправляет адрес молча. ТЗ требует обратного: "Ненадёжно
+прочитанное значение остаётся пустым... Пустое поле менеджер дозаполнит за
+10 секунд; неверное он не заметит". Поэтому предупреждение является
+блокирующим: ошибочный адрес не попадает в validated_json/Bitrix, а причина
+остаётся в validation_issues и показывается в карточке лида.
 
 Проверяются три разные причины недоставки:
   1. Кириллические буквы-двойники внутри латинского адреса (gmаil.com с
@@ -24,6 +26,9 @@ from __future__ import annotations
 import os
 import re
 
+# Домены, которые встречаются на выставочных визитках чаще всего. Список
+# нужен только как эталон для поиска опечаток — адрес на незнакомом
+# корпоративном домене НЕ считается ошибкой.
 KNOWN_DOMAINS = {
     "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
     "yahoo.com", "icloud.com", "me.com", "proton.me", "protonmail.com",
@@ -33,6 +38,7 @@ KNOWN_DOMAINS = {
     "mail.kz", "bostonlink.kz",
 }
 
+# Кириллические буквы, неотличимые от латинских на глаз.
 CYRILLIC_LOOKALIKES = {
     "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o",
     "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "ѕ": "s", "і": "i",
@@ -80,6 +86,7 @@ def latinized(value: str) -> str:
 
 
 def homoglyph_warning(email: str) -> dict[str, str] | None:
+    """Кириллица внутри адреса — самая незаметная и самая фатальная ошибка."""
     if not CYRILLIC_RE.search(email):
         return None
     suggestion = latinized(email)
@@ -94,6 +101,7 @@ def homoglyph_warning(email: str) -> dict[str, str] | None:
 
 
 def domain_typo_warning(email: str) -> dict[str, str] | None:
+    """Домен похож на известный, но не совпадает с ним: gmail.con, yadnex.ru."""
     if "@" not in email:
         return None
     domain = email.rsplit("@", 1)[1].casefold()
@@ -102,6 +110,8 @@ def domain_typo_warning(email: str) -> dict[str, str] | None:
 
     best: tuple[int, str] | None = None
     for known in KNOWN_DOMAINS:
+        # Сравниваем только с доменами сопоставимой длины: иначе короткий
+        # корпоративный домен "похож" на что угодно.
         if abs(len(known) - len(domain)) > 2:
             continue
         distance = edit_distance(domain, known)
@@ -112,6 +122,9 @@ def domain_typo_warning(email: str) -> dict[str, str] | None:
         return None
 
     distance, known = best
+    # Расстояние 1 — почти наверняка опечатка (gmail.con -> gmail.com).
+    # Расстояние 2 допускаем только для доменов подлиннее, где случайное
+    # совпадение маловероятно.
     if distance == 1 or (distance == 2 and len(domain) >= 8):
         return {
             "code": "domain_looks_like_typo",
@@ -125,6 +138,7 @@ def domain_typo_warning(email: str) -> dict[str, str] | None:
 
 
 def domain_accepts_mail(domain: str) -> bool | None:
+    """Есть ли у домена MX-запись. None — проверить не удалось."""
     if domain in _mx_cache:
         return _mx_cache[domain]
 
@@ -138,8 +152,11 @@ def domain_accepts_mail(domain: str) -> bool | None:
         answers = resolver.resolve(domain, "MX")
         result = len(answers) > 0
     except ImportError:
+        # dnspython не установлен — молча пропускаем проверку, а не падаем.
         result = None
     except Exception:
+        # NXDOMAIN, отсутствие MX, таймаут. Различать их здесь не нужно:
+        # интересует только "точно принимает" против "не подтвердилось".
         result = False
 
     _mx_cache[domain] = result
@@ -174,7 +191,7 @@ def email_warnings(email: str) -> list[dict[str, str]]:
 
 
 def warnings_as_text(email: str, warnings: list[dict[str, str]]) -> str:
-    """Готовый текст для комментария в CRM — чтобы менеджер увидел."""
+    """Готовый текст для комментария в Bitrix24 — чтобы менеджер увидел."""
     if not warnings:
         return ""
     lines = [f"Проверьте адрес {email}:"]

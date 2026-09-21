@@ -360,7 +360,11 @@ def identity_fingerprint(validated: dict[str, Any]) -> str | None:
         digits = re.sub(r"\D", "", phone)
 
         if digits:
-            phones.append(digits)
+            # Ключ используется только для сравнения. +7 705... и
+            # 8 705... — один национальный номер, поэтому сравниваем по
+            # последним десяти значащим цифрам. Исходное значение в CRM не
+            # изменяем и код страны не придумываем.
+            phones.append(digits[-10:] if len(digits) >= 10 else digits)
 
     if phones:
         return "phone:" + sorted(set(phones))[0]
@@ -601,7 +605,11 @@ def build_fields(
     for item in validated.get("emails") or []:
         if not isinstance(item, dict) or not item.get("value"):
             continue
-        text = warnings_as_text(str(item["value"]), item.get("warnings") or [])
+        value = str(item["value"])
+        text = warnings_as_text(
+            value,
+            item.get("warnings") or email_warnings(value),
+        )
         if text:
             warning_blocks.append(text)
     if warning_blocks:

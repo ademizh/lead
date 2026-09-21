@@ -9,6 +9,7 @@ from lead_rules import (
     position_quote_supports,
     priority_quote_supports,
 )
+from spoken_contacts import spoken_phones, with_spoken_contacts
 
 
 class LeadRulesTest(unittest.TestCase):
@@ -41,7 +42,14 @@ class LeadRulesTest(unittest.TestCase):
         self.assertIsNotNone(explicit_high_priority_match("Срочно перезвонить"))
         self.assertIsNone(explicit_high_priority_match("Не срочно"))
 
+    def test_spoken_phone_is_reconstructed(self) -> None:
+        text = (
+            "Телефон: восемь семьсот пять сто двадцать три "
+            "сорок пять шестьдесят семь"
+        )
+        self.assertEqual(spoken_phones(text), ["87051234567"])
+        self.assertIn("87051234567", with_spoken_contacts(text))
+
 
 if __name__ == "__main__":
     unittest.main()
-

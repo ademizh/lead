@@ -6,7 +6,8 @@
   1. повторный прогон набора целиком;
   2. перезапуск сервиса на середине обработки;
   3. догрузка за уже обработанный период.
-  4. ``grouping_worker.py --rebuild`` с сохранением стабильного CRM-ключа.
+  4. ``grouping_worker.py --rebuild`` с сохранением стабильного CRM-ключа;
+  5. номер словами, затем тот же номер цифрами — обновление, не второй лид.
 
 Тест поднимает сервис на временной базе и с фальшивым порталом Bitrix24
 (обычный счётчик вызовов вместо сети), прогоняет все три сценария и
@@ -299,7 +300,50 @@ def main() -> None:
         print("  РЕЗУЛЬТАТ: group/CRM key пережил пересборку, дублей нет\n")
 
         print("=" * 70)
-        print("ВСЕ ЧЕТЫРЕ ПРОВЕРКИ ИДЕМПОТЕНТНОСТИ ПРОЙДЕНЫ")
+        print("СЦЕНАРИЙ 5. Номер словами, затем уточнение цифрами")
+        print("=" * 70)
+        db3 = build_database(Path(tmp) / "test3.db")
+        CALLS.clear()
+        LEADS.clear()
+        correction_messages = [
+            (
+                "corr-1",
+                "2026-09-21T12:00:00+00:00",
+                "Познакомился с Асель Нурлановной, компания ТОО СтройИнвест, "
+                "коммерческий директор. Телефон: восемь семьсот пять сто "
+                "двадцать три сорок пять шестьдесят семь",
+            ),
+            (
+                "corr-2",
+                "2026-09-21T12:00:30+00:00",
+                "Асель Нурлановна, СтройИнвест — записал номер точнее: "
+                "+7 705 123 45 67",
+            ),
+        ]
+        ingest(db3, correction_messages)
+        run_grouping(db3)
+        grouped = db3.execute(
+            "SELECT COUNT(DISTINCT lead_group_id) FROM grouping_results "
+            "WHERE message_db_id IN "
+            "(SELECT id FROM messages WHERE message_id LIKE 'corr-%')"
+        ).fetchone()[0]
+        assert grouped == 1, f"уточнение телефона разделилось на {grouped} группы"
+
+        spoken_fp = bw.identity_fingerprint(
+            {"emails": [], "phones": [{"value": "8 705 123 45 67"}]}
+        )
+        numeric_fp = bw.identity_fingerprint(
+            {"emails": [], "phones": [{"value": "+7 705 123 45 67"}]}
+        )
+        assert spoken_fp == numeric_fp, "+7 и 8 получили разные ключи телефона"
+
+        run_extraction(db3)
+        run_crm_sync(db3)
+        assert lead_add_count() == 1, "уточнение телефона создало второй лид"
+        print("  РЕЗУЛЬТАТ: обе записи в одной группе, crm.lead.add вызван один раз\n")
+
+        print("=" * 70)
+        print("ВСЕ ПЯТЬ ПРОВЕРОК ИДЕМПОТЕНТНОСТИ ПРОЙДЕНЫ")
         print("=" * 70)
 
 

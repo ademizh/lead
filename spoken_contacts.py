@@ -1,4 +1,4 @@
-"""ДОБАВЛЕНО: email, продиктованный голосом, а не написанный текстом.
+"""Контакты, продиктованные голосом или написанные словами.
 
 На выставке менеджер часто не печатает адрес, а наговаривает его в голосовое:
 "мэйл самал собачка жмэйл ком", "иван точка петров собачка мэйл точка ру".
@@ -10,6 +10,11 @@ Bitrix) адрес был прямо перед глазами.
 Модуль переводит продиктованный адрес в настоящий (samal@gmail.com) и ничего
 не меняет в самой расшифровке — она по ТЗ обязана остаться дословной.
 Нормализованный адрес добавляется рядом, отдельной пометкой.
+
+Телефон менеджер тоже может записать словами: ``восемь семьсот пять сто
+двадцать три сорок пять шестьдесят семь``. Для группировки это тот же номер,
+что ``+7 705 123 45 67``. Поэтому модуль также восстанавливает телефонные
+цифры, не изменяя исходный текст.
 """
 
 from __future__ import annotations
@@ -59,6 +64,57 @@ TRANSLIT = {
 TOKEN_SPLIT_RE = re.compile(r"[\s.,;:!?()\[\]«»\"'/\\]+")
 WORD_RE = re.compile(r"^[a-zA-Zа-яёА-ЯЁ0-9_-]+$")
 EMAIL_SHAPE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*@[a-z0-9-]+(?:\.[a-z0-9-]+)+$")
+
+RU_UNITS = {
+    0: "ноль", 1: "один", 2: "два", 3: "три", 4: "четыре",
+    5: "пять", 6: "шесть", 7: "семь", 8: "восемь", 9: "девять",
+}
+RU_TEENS = {
+    10: "десять", 11: "одиннадцать", 12: "двенадцать",
+    13: "тринадцать", 14: "четырнадцать", 15: "пятнадцать",
+    16: "шестнадцать", 17: "семнадцать", 18: "восемнадцать",
+    19: "девятнадцать",
+}
+RU_TENS = {
+    20: "двадцать", 30: "тридцать", 40: "сорок", 50: "пятьдесят",
+    60: "шестьдесят", 70: "семьдесят", 80: "восемьдесят",
+    90: "девяносто",
+}
+RU_HUNDREDS = {
+    100: "сто", 200: "двести", 300: "триста", 400: "четыреста",
+    500: "пятьсот", 600: "шестьсот", 700: "семьсот",
+    800: "восемьсот", 900: "девятьсот",
+}
+NUMBER_TOKEN_ALIASES = {
+    "нуль": "ноль", "одна": "один", "одно": "один", "единица": "один",
+    "две": "два",
+}
+
+
+def _number_words(value: int) -> tuple[str, ...]:
+    """Каноническое русское написание числа 0..999."""
+    if value < 10:
+        return (RU_UNITS[value],)
+
+    parts: list[str] = []
+    hundreds = value // 100 * 100
+    remainder = value % 100
+    if hundreds:
+        parts.append(RU_HUNDREDS[hundreds])
+    if remainder in RU_TEENS:
+        parts.append(RU_TEENS[remainder])
+        return tuple(parts)
+    tens = remainder // 10 * 10
+    units = remainder % 10
+    if tens:
+        parts.append(RU_TENS[tens])
+    if units:
+        parts.append(RU_UNITS[units])
+    return tuple(parts)
+
+
+RU_NUMBER_PHRASES = {_number_words(value): value for value in range(1000)}
+RU_NUMBER_TOKENS = {word for phrase in RU_NUMBER_PHRASES for word in phrase}
 
 
 def transliterate(word: str) -> str:
@@ -131,6 +187,57 @@ def spoken_emails(text: str) -> list[str]:
     return found
 
 
+def spoken_phones(text: str) -> list[str]:
+    """Восстанавливает номера из последовательностей русских числительных.
+
+    Части телефона могут произноситься группами: ``восемь`` + ``семьсот
+    пять`` + ``сто двадцать три`` + ``сорок пять`` + ``шестьдесят семь``.
+    Самое длинное допустимое число берётся жадно, после чего части
+    соединяются. Последовательности короче семи и длиннее пятнадцати цифр
+    телефонами не считаются.
+    """
+    if not text:
+        return []
+
+    normalized = [
+        NUMBER_TOKEN_ALIASES.get(token.casefold(), token.casefold())
+        for token in tokenize(text)
+    ]
+    found: list[str] = []
+    index = 0
+
+    while index < len(normalized):
+        if normalized[index] not in RU_NUMBER_TOKENS:
+            index += 1
+            continue
+
+        end = index
+        while end < len(normalized) and normalized[end] in RU_NUMBER_TOKENS:
+            end += 1
+
+        pieces: list[str] = []
+        cursor = index
+        while cursor < end:
+            matched = False
+            for size in range(min(3, end - cursor), 0, -1):
+                phrase = tuple(normalized[cursor : cursor + size])
+                if phrase not in RU_NUMBER_PHRASES:
+                    continue
+                pieces.append(str(RU_NUMBER_PHRASES[phrase]))
+                cursor += size
+                matched = True
+                break
+            if not matched:
+                cursor += 1
+
+        candidate = "".join(pieces)
+        if 7 <= len(candidate) <= 15 and candidate not in found:
+            found.append(candidate)
+        index = end
+
+    return found
+
+
 def with_spoken_emails(text: str) -> str:
     """Текст плюс пометка с распознанными адресами.
 
@@ -142,3 +249,17 @@ def with_spoken_emails(text: str) -> str:
     if not emails:
         return text
     return text + "\n[email, продиктованный голосом: " + ", ".join(emails) + "]"
+
+
+def with_spoken_contacts(text: str) -> str:
+    """Добавляет машинно-читаемые email/телефоны, сохраняя исходник."""
+    annotations: list[str] = []
+    emails = spoken_emails(text)
+    phones = spoken_phones(text)
+    if emails:
+        annotations.append("email, продиктованный голосом: " + ", ".join(emails))
+    if phones:
+        annotations.append("телефон, продиктованный словами: " + ", ".join(phones))
+    if not annotations:
+        return text
+    return text + "\n[" + "; ".join(annotations) + "]"
