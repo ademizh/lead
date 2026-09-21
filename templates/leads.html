@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Лиды{% endblock %}
+{% block content %}
+<h1>Обработанные лиды</h1>
+
+{% if queued %}<div class="notice">Лид поставлен на повторную отправку.</div>{% endif %}
+
+<section class="stats">
+    <div><strong>{{ statistics.total }}</strong><span>Всего</span></div>
+    <div><strong>{{ statistics.synced }}</strong><span>Передано</span></div>
+    <div><strong>{{ statistics.pending }}</strong><span>В очереди</span></div>
+    <div><strong>{{ statistics.errors }}</strong><span>Ошибки</span></div>
+</section>
+
+<section class="panel table-wrap">
+<table>
+    <thead>
+    <tr>
+        <th>Лид</th><th>Автор</th><th>Тип</th><th>Приоритет</th>
+        <th>CRM</th><th>Время</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for lead in leads %}
+    <tr>
+        <td>
+            <a class="lead-link" href="/leads/{{ lead.id }}">{{ lead.title }}</a>
+            {% if lead.error_code %}<small class="error">{{ lead.error_code }}</small>{% endif %}
+        </td>
+        <td>{{ lead.author_name }}</td>
+        <td>{{ lead.lead_type }}</td>
+        <td>{{ lead.priority }}</td>
+        <td>
+            <span class="status status-{{ lead.crm_status }}">{{ lead.crm_status }}</span>
+            {% if lead.bitrix_lead_id %}<small>ID {{ lead.bitrix_lead_id }}</small>{% endif %}
+        </td>
+        <td>{{ lead.last_message_at }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6">Обработанных лидов пока нет.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</section>
+{% endblock %}
+

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Нераспределённые сообщения · Teams → Bitrix24{% endblock %}
+{% block content %}
+  <h1>Сообщения без лида</h1>
+
+  {% if attached %}
+    <div class="notice success">Сообщение присоединено к лиду. Карточка в Bitrix24 обновится в ближайшие секунды.</div>
+  {% endif %}
+
+  <p class="muted small">
+    Здесь сообщения, которые сервис не отнёс ни к одному контакту: либо в них нет признаков лида
+    (организационные, пустые), либо приписка могла относиться сразу к двум открытым контактам —
+    в таком случае сервис намеренно не угадывает. Если это всё-таки часть контакта, присоедините
+    её к нужному лиду: лид будет переизвлечён и обновлён в Bitrix24 (новый лид не создастся).
+  </p>
+
+  {% if messages %}
+    <table>
+      <thead>
+        <tr>
+          <th>Время</th>
+          <th>Автор</th>
+          <th>Сообщение</th>
+          <th>Почему не в лиде</th>
+          <th>Присоединить к лиду</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for message in messages %}
+          <tr>
+            <td class="small">{{ message.created_at }}</td>
+            <td class="small">{{ message.author_name or "—" }}</td>
+            <td>
+              {{ message.body_text or "(без текста)" }}
+              {% if message.web_url %}
+                <div class="small"><a href="{{ message.web_url }}" target="_blank" rel="noopener">Открыть в Teams</a></div>
+              {% endif %}
+            </td>
+            <td class="small">
+              {{ message.classification }}
+              <div class="muted">{{ message.decision_reason }}</div>
+            </td>
+            <td>
+              {% if lead_options %}
+                <form method="post" action="/unassigned/{{ message.message_db_id }}/attach">
+                  <select name="lead_group_id" required>
+                    {% for option in lead_options %}
+                      <option value="{{ option.id }}">{{ option.label }} ({{ option.author_name }})</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit">Присоединить</button>
+                </form>
+              {% else %}
+                <span class="muted small">нет открытых лидов</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="notice empty">Все обработанные сообщения распределены по лидам.</p>
+  {% endif %}
+{% endblock %}

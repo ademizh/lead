@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<h1>Технические настройки</h1>
+<p class="muted">Страница доступна только роли admin. Секреты показываются только как «настроено / не настроено».</p>
+
+<section class="panel"><h2>Кампания и интеграции</h2><dl>
+    <dt>Teams team ID</dt><dd>{{ settings.team_id }}</dd>
+    <dt>Teams channel ID</dt><dd>{{ settings.channel_id }}</dd>
+    <dt>Источник Bitrix24</dt><dd>{{ settings.source_id }}</dd>
+    <dt>Выставка ID</dt><dd>{{ settings.exhibition_id }}</dd>
+    <dt>Polling, секунд</dt><dd>{{ settings.poll_seconds }}</dd>
+    <dt>Microsoft secret</dt><dd>{{ 'настроено' if settings.microsoft_secret_configured else 'не настроено' }}</dd>
+    <dt>Bitrix webhook</dt><dd>{{ 'настроено' if settings.bitrix_webhook_configured else 'не настроено' }}</dd>
+    <dt>OpenAI key</dt><dd>{{ 'настроено' if settings.openai_key_configured else 'не настроено' }}</dd>
+</dl></section>
+
+<section class="panel"><h2>Сопоставление сотрудников</h2><div class="table-wrap"><table>
+    <thead><tr><th>Teams</th><th>Teams ID</th><th>Bitrix ID</th><th>Активен</th></tr></thead>
+    <tbody>{% for item in mappings %}<tr>
+        <td>{{ item.teams_display_name or '—' }}</td><td>{{ item.teams_author_id }}</td>
+        <td>{{ item.bitrix_user_id }}</td><td>{{ 'да' if item.active else 'нет' }}</td>
+    </tr>{% else %}<tr><td colspan="4">Сопоставлений нет.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+{% endblock %}
+

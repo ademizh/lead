@@ -1,0 +1,8 @@
+data/
+.venv/
+.venv-anaconda-backup/
+__pycache__/
+.env
+*.pyc
+.idea/
+.vscode/

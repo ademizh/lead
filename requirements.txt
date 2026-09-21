@@ -1,0 +1,13 @@
+msal
+requests
+python-dotenv
+openai
+pydantic>=2
+email-validator
+phonenumbers
+Pillow
+python-dotenv
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart

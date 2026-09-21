@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.title }} · Teams → Bitrix24{% endblock %}
+{% block content %}
+  <p><a class="row-link" href="/">&larr; Все лиды</a></p>
+
+  {% if queued %}
+    <div class="notice success">Лид поставлен в очередь на повторную отправку в Bitrix24.</div>
+  {% endif %}
+
+  <h1>{{ lead.title }}</h1>
+
+  <div class="card">
+    <dl class="field-grid">
+      <dt>Тип лида</dt><dd><span class="badge type-{{ details.lead_type }}">{{ details.lead_type }}</span></dd>
+      <dt>Приоритет</dt><dd>{{ details.priority or "—" }}</dd>
+      <dt>Ответственный (Teams)</dt><dd>{{ lead.author_name }}</dd>
+      <dt>Имя</dt><dd>{{ details.full_name or "—" }}</dd>
+      <dt>Компания</dt><dd>{{ details.company or "—" }}</dd>
+      <dt>Должность</dt><dd>{{ details.position or "—" }}</dd>
+      <dt>Страна / регион</dt><dd>{{ details.country or "—" }}{% if details.region %} ({{ details.region }}){% endif %}</dd>
+      <dt>Телефоны</dt><dd>{% if details.phones %}{{ details.phones | join(", ") }}{% else %}—{% endif %}</dd>
+      <dt>Email</dt><dd>{% if details.emails %}{{ details.emails | join(", ") }}{% else %}—{% endif %}</dd>
+      <dt>Интерес к продукту</dt><dd>{% if details.product_interests %}{{ details.product_interests | join(", ") }}{% else %}—{% endif %}</dd>
+      <dt>Статус CRM</dt>
+      <dd>
+        <span class="badge status-{{ lead.crm_status }}">{{ lead.crm_status }}</span>
+        {% if lead.bitrix_lead_id %} · Bitrix ID {{ lead.bitrix_lead_id }}{% endif %}
+        {% if lead.error_code %}<div class="small muted">{{ lead.error_code }}</div>{% endif %}
+      </dd>
+    </dl>
+
+    <form class="inline" method="post" action="/leads/{{ lead.id }}/retry" style="margin-top: 14px;">
+      <button type="submit">Отправить в Bitrix24 повторно</button>
+    </form>
+  </div>
+
+  {% if details.summary_ru %}
+    <h2>AI-выжимка (RU)</h2>
+    <div class="card">{{ details.summary_ru }}</div>
+  {% endif %}
+
+  {% if details.manager_assessment %}
+    <h2>Оценка менеджера</h2>
+    <div class="card">{{ details.manager_assessment }}</div>
+  {% endif %}
+
+  {% if details.validation_issues %}
+    <h2>Почему часть полей пустая</h2>
+    <div class="card">
+      <p class="muted small">
+        Сервис намеренно оставляет поле пустым, если значение прочитано ненадёжно:
+        пустое поле менеджер дозаполнит за 10 секунд, а неверное он не заметит.
+      </p>
+      <ul class="issues-list">
+        {% for issue in details.validation_issues %}
+          <li>
+            <strong>{{ issue.field }}</strong> — {{ issue.explanation }}
+            <div class="muted small">{{ issue.code }}</div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <h2>Дословная расшифровка (как есть, без пересказа)</h2>
+  {% if details.transcripts %}
+    {% for item in details.transcripts %}
+      <div class="card">
+        <div class="small muted">Teams message {{ item.message_id }}</div>
+        <div class="transcript">{{ item.text }}</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Голосовых сообщений в этой группе не было.</p>
+  {% endif %}
+
+  <h2>Исходные сообщения Teams</h2>
+  <table>
+    <thead>
+      <tr><th>Автор</th><th>Время</th><th>Текст</th><th>Классификация</th><th>Ссылка</th></tr>
+    </thead>
+    <tbody>
+      {% for source in sources %}
+        <tr>
+          <td>{{ source.author_name or "—" }}</td>
+          <td class="small">{{ source.created_at }}</td>
+          <td>{{ source.body_text or "—" }}</td>
+          <td class="small">{{ source.classification }}<br><span class="muted">{{ source.decision_reason }}</span></td>
+          <td>{% if source.web_url %}<a href="{{ source.web_url }}" target="_blank" rel="noopener">Открыть в Teams</a>{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if artifacts %}
+    <h2>Результаты OCR / транскрибации</h2>
+    <table>
+      <thead><tr><th>Сообщение</th><th>Тип</th><th>Модель</th><th>Уверенность</th><th>Текст</th></tr></thead>
+      <tbody>
+        {% for artifact in artifacts %}
+          <tr>
+            <td class="small">{{ artifact.message_id }}</td>
+            <td>{{ artifact.artifact_type }}</td>
+            <td class="small">{{ artifact.model_name or "—" }}</td>
+            <td>{{ "%.2f" | format(artifact.confidence) if artifact.confidence is not none else "—" }}</td>
+            <td class="transcript">{{ artifact.raw_text or "—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if files %}
+    <h2>Вложения</h2>
+    <table>
+      <thead><tr><th>Файл</th><th>Тип</th><th>Размер</th><th>Сообщение</th></tr></thead>
+      <tbody>
+        {% for file in files %}
+          <tr>
+            <td><a href="/files/{{ file.id }}">{{ file.original_name or ("файл #" ~ file.id) }}</a></td>
+            <td class="small">{{ file.mime_type or "—" }}</td>
+            <td class="small">{{ (file.size_bytes / 1024) | round(1) }} КБ</td>
+            <td class="small">{{ file.message_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if evidence %}
+    <h2>Откуда взято каждое поле (evidence)</h2>
+    <table>
+      <thead><tr><th>Поле</th><th>Сообщение</th><th>Источник</th><th>Цитата</th><th>Уверенность</th></tr></thead>
+      <tbody>
+        {% for item in evidence %}
+          <tr>
+            <td>{{ item.field_name }}{% if item.item_index %}[{{ item.item_index }}]{% endif %}</td>
+            <td class="small">{{ item.message_id }}</td>
+            <td class="small">{{ item.source_type }}</td>
+            <td>{{ item.quote }}</td>
+            <td>{{ "%.2f" | format(item.confidence) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

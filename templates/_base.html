@@ -1,0 +1,28 @@
+<!--
+ДОБАВЛЕНО: базовый layout. В присланном архиве директории templates/ вообще
+не было, хотя web_app.py (Jinja2Templates(directory=BASE_DIR / "templates"))
+рендерит leads.html / lead_detail.html / admin.html — без этих файлов любой
+GET-запрос к веб-интерфейсу падал с jinja2.exceptions.TemplateNotFound.
+-->
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Teams → Bitrix24{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <a href="/">Лиды</a>
+      <a href="/unassigned">Без лида</a>
+      {% if user.role == "admin" %}<a href="/admin">Администрирование</a>{% endif %}
+    </div>
+    <div class="muted small">{{ user.username }} · {{ user.role }}</div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

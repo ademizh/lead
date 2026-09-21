@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Teams → Bitrix24{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+<header class="topbar">
+    <div>
+        <a class="brand" href="/">Teams → Bitrix24</a>
+        <span class="subtitle">выставочные лиды</span>
+    </div>
+
+    <nav>
+        <a href="/">Лиды</a>
+        <a href="/unassigned">Без лида</a>
+
+        {% if user.role == "admin" %}
+        <a href="/admin">Администрирование</a>
+        {% endif %}
+
+        <span class="role">{{ user.username }} · {{ user.role }}</span>
+    </nav>
+</header>
+
+<main class="container">
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>
