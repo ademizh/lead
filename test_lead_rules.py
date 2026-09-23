@@ -10,6 +10,7 @@ from lead_rules import (
     priority_quote_supports,
 )
 from spoken_contacts import spoken_phones, with_spoken_contacts
+from grouping_worker import leading_named_subject
 
 
 class LeadRulesTest(unittest.TestCase):
@@ -49,6 +50,10 @@ class LeadRulesTest(unittest.TestCase):
         )
         self.assertEqual(spoken_phones(text), ["87051234567"])
         self.assertIn("87051234567", with_spoken_contacts(text))
+
+    def test_lowercase_leading_person_is_detected(self) -> None:
+        text = "алмас дидар получил презентацию, встреча перенесена"
+        self.assertEqual(leading_named_subject(text), ("алмас", "дидар"))
 
 
 if __name__ == "__main__":

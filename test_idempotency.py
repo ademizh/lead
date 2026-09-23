@@ -8,6 +8,8 @@
   3. догрузка за уже обработанный период.
   4. ``grouping_worker.py --rebuild`` с сохранением стабильного CRM-ключа;
   5. номер словами, затем тот же номер цифрами — обновление, не второй лид.
+  6. ошибка ASR/LLM в раннем извлечении имени ("Тимур Олив") не
+     разделяет два сырых источника, где буквально сказано "Тимур Алиев".
 
 Тест поднимает сервис на временной базе и с фальшивым порталом Bitrix24
 (обычный счётчик вызовов вместо сети), прогоняет все три сценария и
@@ -343,7 +345,151 @@ def main() -> None:
         print("  РЕЗУЛЬТАТ: обе записи в одной группе, crm.lead.add вызван один раз\n")
 
         print("=" * 70)
-        print("ВСЕ ПЯТЬ ПРОВЕРОК ИДЕМПОТЕНТНОСТИ ПРОЙДЕНЫ")
+        print("СЦЕНАРИЙ 6. Ошибка в извлечённом имени не создаёт дубль")
+        print("=" * 70)
+        db4 = build_database(Path(tmp) / "test4.db")
+        CALLS.clear()
+        LEADS.clear()
+        ingest(
+            db4,
+            [
+                (
+                    "timur-voice",
+                    "2026-09-21T11:27:55+00:00",
+                    "Тимур Алиев, номер 8705-332-446, занимается "
+                    "строительством и декорацией.",
+                )
+            ],
+        )
+        run_grouping(db4)
+        timur_group_id = db4.execute(
+            "SELECT lead_group_id FROM grouping_results WHERE message_db_id = "
+            "(SELECT id FROM messages WHERE message_id = 'timur-voice')"
+        ).fetchone()[0]
+
+        # Имитируем ошибку со скриншота: raw transcript
+        # говорит "Тимур Алиев", а extracted full_name — "Тимур Олив".
+        wrong_extraction = {
+            "is_lead": True,
+            "full_name": {"value": "Тимур Олив", "evidence": []},
+            "company": {"value": None, "evidence": []},
+            "position": {"value": None, "evidence": []},
+            "country": {"value": None, "evidence": []},
+            "emails": [],
+            "phones": [{"value": "8705332446"}],
+            "product_interests": [],
+            "summary_ru": "тест",
+            "lead_type": "Customer",
+        }
+        db4.execute(
+            "INSERT INTO lead_extractions(lead_group_id, group_revision, status, "
+            "validated_json) VALUES (?, 1, 'ready', ?)",
+            (timur_group_id, json.dumps(wrong_extraction, ensure_ascii=False)),
+        )
+        db4.execute(
+            "UPDATE lead_groups SET needs_reextract = 0 WHERE id = ?",
+            (timur_group_id,),
+        )
+        db4.commit()
+
+        ingest(
+            db4,
+            [
+                (
+                    "timur-follow-up",
+                    "2026-09-21T11:30:32+00:00",
+                    "Тимур Алиев сказал, что получил презентацию и хочет "
+                    "новости о стенде.",
+                )
+            ],
+        )
+        run_grouping(db4)
+        result = db4.execute(
+            "SELECT lead_group_id, classification, decision_reason FROM grouping_results "
+            "WHERE message_db_id = (SELECT id FROM messages "
+            "WHERE message_id = 'timur-follow-up')"
+        ).fetchone()
+        assert result["lead_group_id"] == timur_group_id, "Тимура разделило на две группы"
+        assert result["classification"] == "ATTACH_TO_GROUP"
+        assert "same_person_name_in_raw_group_source" in result["decision_reason"]
+        run_extraction(db4)
+        run_crm_sync(db4)
+        assert lead_add_count() == 1, "два сообщения о Тимуре создали два CRM-лида"
+        print("  РЕЗУЛЬТАТ: одна группа, crm.lead.add вызван один раз\n")
+
+        print("=" * 70)
+        print("СЦЕНАРИЙ 7. Другое имя в lower case — это новый лид")
+        print("=" * 70)
+        db5 = build_database(Path(tmp) / "test5.db")
+        CALLS.clear()
+        LEADS.clear()
+        ingest(
+            db5,
+            [
+                (
+                    "anna-voice",
+                    "2026-09-21T11:50:51+00:00",
+                    "Анна Иванова, CEO, номер 777-874-560, спрашивала "
+                    "про презентацию.",
+                )
+            ],
+        )
+        run_grouping(db5)
+        anna_group_id = db5.execute(
+            "SELECT lead_group_id FROM grouping_results WHERE message_db_id = "
+            "(SELECT id FROM messages WHERE message_id = 'anna-voice')"
+        ).fetchone()[0]
+        anna_extraction = {
+            "is_lead": True,
+            "full_name": {"value": "Анна Иванова", "evidence": []},
+            "company": {"value": None, "evidence": []},
+            "position": {"value": "CEO", "evidence": []},
+            "country": {"value": None, "evidence": []},
+            "emails": [],
+            "phones": [{"value": "777874560"}],
+            "product_interests": [],
+            "summary_ru": "тест",
+            "lead_type": "Customer",
+        }
+        db5.execute(
+            "INSERT INTO lead_extractions(lead_group_id, group_revision, status, "
+            "validated_json) VALUES (?, 1, 'ready', ?)",
+            (anna_group_id, json.dumps(anna_extraction, ensure_ascii=False)),
+        )
+        db5.execute(
+            "UPDATE lead_groups SET needs_reextract = 0 WHERE id = ?",
+            (anna_group_id,),
+        )
+        db5.commit()
+
+        ingest(
+            db5,
+            [
+                (
+                    "almas-note",
+                    "2026-09-21T11:52:54+00:00",
+                    "алмас дидар получил презентацию, встреча перенесена на субботу",
+                )
+            ],
+        )
+        run_grouping(db5)
+        almas_result = db5.execute(
+            "SELECT lead_group_id, classification, decision_reason FROM grouping_results "
+            "WHERE message_db_id = (SELECT id FROM messages WHERE message_id = 'almas-note')"
+        ).fetchone()
+        assert almas_result["classification"] == "NEW_GROUP"
+        assert almas_result["lead_group_id"] != anna_group_id
+        assert "different_leading_named_subject" in almas_result["decision_reason"]
+        print("  РЕЗУЛЬТАТ: Алмас не прикреплён к Анне, создана отдельная группа\n")
+
+        # Windows does not allow TemporaryDirectory to delete SQLite files
+        # while a connection still has an open file handle. Linux tolerated
+        # this, which hid the cleanup defect in earlier test runs.
+        for connection in (db, db2, db3, db4, db5):
+            connection.close()
+
+        print("=" * 70)
+        print("ВСЕ СЕМЬ ПРОВЕРОК ИДЕМПОТЕНТНОСТИ ПРОЙДЕНЫ")
         print("=" * 70)
 
 

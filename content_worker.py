@@ -44,7 +44,7 @@ WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "").strip() or None
 # продуктов и типичных компаний-посетителей.
 WHISPER_INITIAL_PROMPT = os.getenv(
     "WHISPER_INITIAL_PROMPT",
-    "Выставка, GITEX, Hannover Messe, Innoprom, ADIPEC, стенд, визитка, "
+    "Выставка, стенд, визитка, "
     "контакт, лид, клиент, партнёр, партнёрство, дистрибьютор, интегратор, "
     "реселлер, перепродавать клиентам, внедрять клиентам, КП, "
     "коммерческое предложение, презентация, прайс, "
